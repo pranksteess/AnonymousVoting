@@ -1,0 +1,102 @@
+/**
+ * Created by specer on 18/3/27.
+ */
+var querystring = require("querystring"),
+        fs = require("fs"),
+        url = require("url"),
+        NodeRSA = require("node-rsa"),
+        BlindSignature = require('blind-signatures');
+
+
+const rsaPublicDer = "./publicKey";
+const rsaPrivateDer = "./privateKey";
+
+function generateRSAFile(){
+        console.log("RSA file not exist, first init");
+
+        var key = new NodeRSA({b: 2048});
+        var publicDer = key.exportKey('pkcs8-public');
+        var privateDer = key.exportKey('pkcs8-private');
+        fs.writeFileSync(rsaPublicDer, publicDer, 'utf8');
+        fs.writeFileSync(rsaPrivateDer, privateDer, 'utf8');
+        return key;
+}
+
+function getRSAPrivateFromFile(){
+
+        var dataPub = fs.readFileSync(rsaPublicDer, 'utf8');
+        var dataPri = fs.readFileSync(rsaPrivateDer, 'utf8');
+        var key = new NodeRSA();
+        key.importKey(dataPub, "pkcs8-public");
+        key.importKey(dataPri, "pkcs8-private");
+        //console.log("=======key======\n" + data + "\n================");
+        console.log("get RSA from file");
+        return key;
+
+}
+function getRSAPublicFromFile(){
+
+        console.log("RSA file exist, read from it");
+        var data = fs.readFileSync(rsaPublicDer, 'utf8');
+        var key = new NodeRSA();
+        key.importKey(data, "pkcs8-public");
+        //console.log("=======key======\n" + data + "\n================");
+        console.log("get RSA from file");
+        return key;
+
+}
+
+function getRSAPublicKey(callback){
+        return fs.existsSync(rsaPublicDer)?getRSAPublicFromFile():generateRSAFile();
+}
+
+function getPublicKey(response) {
+        console.log("Request handler 'getPublicKey' was called,");
+        var key = getRSAPublicKey();
+        //console.log("=======RSA.key======\n" + key.keyPair.n.toString() + "\n================");
+        var returnDic = {
+                "N" : key.keyPair.n.toString(),
+                "E" : key.keyPair.e.toString()
+        };
+        response.writeHead(200, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET',
+                'Access-Control-Allow-Headers': 'x-requested-with,content-type'
+        });
+        response.write(JSON.stringify(returnDic));
+        console.log("result:\n" + JSON.stringify(returnDic));
+        response.end();
+
+}
+
+function sign(response, request) {
+        console.log("Request handler 'sign' was called,");
+        var queryObj = querystring.parse(url.parse(request.url).query);
+        var blindStr = decodeURIComponent(queryObj['blindStr']);
+        var key = getRSAPrivateFromFile();
+        //console.log("origin.keyPair.e:\n"+rsaKey.origin.keyPair.e.toString());
+        var signedStr = BlindSignature.sign({
+                blinded : blindStr,
+                key : key
+        });
+        var returnDic = {};
+        if (signedStr) {
+                returnDic = {"ret" : 0, "signedStr" : signedStr.toString()};
+        }
+        else {
+                returnDic = {"ret" : 1, "signedStr" : ""};
+        }
+        response.writeHead(200, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET',
+                'Access-Control-Allow-Headers': 'x-requested-with,content-type'
+        });
+        response.write(JSON.stringify(returnDic));
+        response.end();
+}
+
+exports.getPublicKey= getPublicKey;
+exports.sign= sign;
+
